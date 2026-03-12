@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flowork OS</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/@arco-design/web-vue@2.53.3/dist/arco-vue.min.js"></script>
+    <script src="https://unpkg.com/@arco-design/web-vue@2.53.3/dist/arco-vue-icon.min.js"></script>
+    <link href="https://unpkg.com/@arco-design/web-vue@2.53.3/dist/arco.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/store/style.css">
+    <style>
+        /* [ADDED] Styles for Dev Mode Switch */
+        .dev-mode-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-right: 15px;
+            padding: 4px 10px;
+            background: rgba(255, 0, 110, 0.1);
+            border: 1px solid rgba(255, 0, 110, 0.3);
+            border-radius: 4px;
+        }
+        .dev-mode-label {
+            font-size: 11px;
+            font-weight: bold;
+            color: #FF006E;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body arco-theme="dark">
+    <div id="app" @mousemove="handleGlobalMouseMove">
+
+        <nav class="solid-navbar">
+            <div class="solid-brand">
+                <icon-command class="brand-icon" />
+                <span>FLOWORK_OS</span>
+            </div>
+
+            <div class="solid-menu">
+                <button :class="['solid-tab-btn', { active: currentTab === 'home' }]" @click="currentTab = 'home'">
+                    <icon-dashboard /> SYS_DASH
+                </button>
+                <button :class="['solid-tab-btn', { active: currentTab === 'app' }]" @click="currentTab = 'app'">
+                    <icon-apps /> APP_REGISTRY
+                </button>
+                <button :class="['solid-tab-btn', { active: currentTab === 'node' }]" @click="currentTab = 'node'">
+                    <icon-code /> NODE_MODULES
+                </button>
+                <button :class="['solid-tab-btn', { active: currentTab === 'installed' }]" @click="currentTab = 'installed'">
+                    <icon-storage /> INSTALLED
+                </button>
+            </div>
+
+            <div class="solid-actions">
+                <div class="dev-mode-container" title="Enable to read raw unencrypted app/node folders">
+                    <span class="dev-mode-label"><icon-tool /> DEV MODE</span>
+                    <a-switch v-model="isDevMode" @change="toggleDevMode" checked-color="#FF006E" unchecked-color="#444">
+                        <template #checked>ON</template>
+                        <template #unchecked>OFF</template>
+                    </a-switch>
+                </div>
+
+                <button class="solid-outline-btn" style="border-color: #00e5ff; color: #00e5ff; margin-right: 10px;" @click="clearSystemCache" title="Clear System Cache">
+                    <icon-delete /> CLEAR CACHE
+                </button>
+
+                <a-tag :color="cacheStatusColor" size="medium" class="solid-status-tag">
+                    <template #icon><icon-sync :spin="!cacheSynced" /></template>
+                    {{ cacheStatusText }}
+                </a-tag>
+                <button class="solid-outline-btn" style="border-color: #d29922; color: #d29922;" @click="systemRestart" title="Restart Engine">
+                    <icon-refresh />
+                </button>
+                <button class="solid-outline-btn" style="border-color: #f53f3f; color: #f53f3f;" @click="systemShutdown" title="Shutdown Engine">
+                    <icon-poweroff />
+                </button>
+            </div>
+        </nav>
+
+        <main class="solid-container custom-scrollbar">
+
+            <header class="solid-header">
+                <h1>{{ tabTitle }}</h1>
+                <p>{{ tabSubtitle }}</p>
+            </header>
+
+            <transition name="fade-scale" mode="out-in">
+
+                <div v-if="currentTab === 'home'" class="solid-dashboard" key="dash">
+                    <div class="solid-bento-grid">
+
+                        <div class="solid-panel flex-col-center">
+                            <div class="solid-panel-title">TELEMETRY LINK</div>
+                            <div class="speedo-container">
+                                <div class="flat-stat-box">
+                                    <span class="stat-label">CPU LOAD</span>
+                                    <span class="stat-value" :style="{ color: cpuUsage > 80 ? '#f53f3f' : '#00e5ff' }">{{cpuUsage}}%</span>
+                                    <div class="flat-progress-bar"><div class="flat-progress-fill" :style="{ width: cpuUsage + '%', background: cpuUsage > 80 ? '#f53f3f' : '#00e5ff' }"></div></div>
+                                </div>
+                                <div class="flat-stat-box">
+                                    <span class="stat-label">MEM ALLOC</span>
+                                    <span class="stat-value" style="color: #b026ff;">{{ramUsage}}%</span>
+                                    <div class="flat-progress-bar"><div class="flat-progress-fill" :style="{ width: ramUsage + '%', background: '#b026ff' }"></div></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="solid-panel flex-col">
+                            <div class="solid-panel-title flex-between">
+                                <span>SYSTEM_LOGS</span>
+                                <button class="solid-outline-btn" @click="reconnectEngine" :disabled="isReconnecting">
+                                    <icon-refresh :spin="isReconnecting" /> {{ isReconnecting ? 'SYNCING...' : 'RECONNECT' }}
+                                </button>
+                            </div>
+                            <div class="solid-terminal custom-scrollbar" id="terminal-screen">
+                                <div v-for="log in systemLogs" :key="log.id" :class="['flat-log-line', log.type]">
+                                    <span class="log-time">[{{log.time}}]</span>
+                                    <span class="log-msg">{{log.text}}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="solid-panel flex-col-center">
+                            <div class="solid-panel-title">SYSTEM AVATAR</div>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" style="width: 150px; margin-top: 20px;">
+                                <path d="M160 160h192v192H160z" fill="#141414" stroke="#00e5ff" stroke-width="8"/>
+                                <circle cx="210" cy="220" r="20" fill="#00e5ff"/>
+                                <circle cx="300" cy="220" r="20" fill="#00e5ff"/>
+                                <path d="M210 280h90" stroke="#00e5ff" stroke-width="8" stroke-linecap="round"/>
+                                <path d="M160 256H80m352 0h-80M256 160V80m0 352v-80" stroke="#00e5ff" stroke-width="8" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+
+                    </div>
+
+                    <div class="solid-news-section">
+                        <div class="solid-panel-title">INTEL_FEED_WIDGET</div>
+                        <div v-if="newsItems.length === 0" class="empty-state">[!] NO_RECORDS_FOUND_IN_ARCHIVE</div>
+                        <div class="solid-news-grid" v-else>
+                            <a v-for="(article, idx) in newsItems" :key="idx" :href="'https://floworkos.com/blog/' + article.slug" target="_blank" class="solid-news-card">
+                                <div class="news-thumb" :style="{ backgroundImage: `url(${article.cover})` }"></div>
+                                <div class="news-info">
+                                    <div class="date"><icon-calendar /> {{ article.date }}</div>
+                                    <h4>{{ article.title }}</h4>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else class="solid-store-layout" key="store">
+
+                    <div style="display: flex; gap: 15px; margin-bottom: 25px; align-items: center;">
+                        <a-input-search
+                            v-model="searchQuery"
+                            placeholder="Cari App atau Node..."
+                            size="large"
+                            style="flex: 1;"
+                        ></a-input-search>
+
+                        <input type="file" id="uploadFile" style="display: none;" @change="handleFileUpload">
+                        <button class="solid-install-btn"
+                                style="width: auto; padding: 0 30px; background: var(--flat-accent); color: #000; font-size: 14px; box-shadow: 0 0 15px rgba(0, 229, 255, 0.3);"
+                                @click="triggerFileSelect">
+                            <icon-upload style="margin-right: 8px; font-size: 18px;" /> UPLOAD MANUAL
+                        </button>
+                    </div>
+
+                    <div v-if="currentTab === 'installed'">
+
+                        <div class="solid-menu" style="margin-bottom: 20px; border-bottom: 1px solid var(--flat-border); padding-bottom: 10px;">
+                            <button :class="['solid-tab-btn', { active: installedSubTab === 'app' }]" @click="installedSubTab = 'app'">
+                                <icon-apps /> APPS TER-INSTALL
+                            </button>
+                            <button :class="['solid-tab-btn', { active: installedSubTab === 'node' }]" @click="installedSubTab = 'node'">
+                                <icon-code /> NODES TER-INSTALL
+                            </button>
+                        </div>
+
+                        <div v-if="installedSubTab === 'app'">
+                            <div v-if="filteredInstalledApps.length === 0" class="empty-state" style="margin-top: 20px; margin-bottom: 40px;">[!] NO_APPS_FOUND</div>
+                            <div class="solid-card-grid" style="margin-bottom: 40px;" v-else>
+                                <div v-for="(item, index) in filteredInstalledApps" :key="'app-'+index" class="solid-module-card">
+                                    <div class="card-top">
+                                        <img :src="item.icon" @error="handleImageError" class="module-icon">
+                                        <div class="module-headers">
+                                            <h4>{{ item.name || 'Unnamed Module' }}</h4>
+                                            <span class="version-tag">v{{ item.version || '1.0.0' }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="card-desc">
+                                        <p>{{ item.description || 'No description provided for this module.' }}</p>
+                                    </div>
+                                    <div class="card-action" style="display: flex; gap: 10px;">
+                                        <button class="solid-install-btn uninstall" @click="triggerUninstall(item)" :disabled="installingItems[item.id]" style="flex: 1; font-size: 11px;">
+                                            <icon-sync :spin="true" v-if="installingItems[item.id]"></icon-sync>
+                                            <icon-delete v-else></icon-delete>
+                                            UNINSTALL
+                                        </button>
+                                        <button class="solid-install-btn" @click="openWebApp(item)" style="flex: 1; font-size: 14px; font-weight: 900; letter-spacing: 1px; background: #39ff14; color: #000; border-color: #39ff14; box-shadow: 0 0 15px rgba(57, 255, 20, 0.4);">
+                                            RUN
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-if="installedSubTab === 'node'">
+                            <div v-if="filteredInstalledNodes.length === 0" class="empty-state" style="margin-top: 20px;">[!] NO_NODES_FOUND</div>
+                            <div class="solid-card-grid" v-else>
+                                <div v-for="(item, index) in filteredInstalledNodes" :key="'node-'+index" class="solid-module-card">
+                                    <div class="card-top">
+                                        <img :src="item.icon" @error="handleImageError" class="module-icon">
+                                        <div class="module-headers">
+                                            <h4>{{ item.name || 'Unnamed Module' }}</h4>
+                                            <span class="version-tag">v{{ item.version || '1.0.0' }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="card-desc">
+                                        <p>{{ item.description || 'No description provided for this module.' }}</p>
+                                    </div>
+                                    <div class="card-action" style="display: flex; gap: 10px;">
+                                        <button class="solid-install-btn uninstall" @click="triggerUninstall(item)" :disabled="installingItems[item.id]" style="flex: 1; font-size: 11px;">
+                                            <icon-sync :spin="true" v-if="installingItems[item.id]"></icon-sync>
+                                            <icon-delete v-else></icon-delete>
+                                            UNINSTALL
+                                        </button>
+                                        <button class="solid-install-btn" @click="openWebApp(item)" style="flex: 1; font-size: 14px; font-weight: 900; letter-spacing: 1px; background: #39ff14; color: #000; border-color: #39ff14; box-shadow: 0 0 15px rgba(57, 255, 20, 0.4);">
+                                            RUN
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div v-else>
+                        <div v-if="filteredItems.length === 0" class="empty-state">[!] NO_MODULES_MATCH_YOUR_QUERY</div>
+                        <div class="solid-card-grid" v-else>
+                            <div v-for="(item, index) in filteredItems" :key="index" class="solid-module-card">
+                                <div class="card-top">
+                                    <img :src="item.icon" @error="handleImageError" class="module-icon">
+                                    <div class="module-headers">
+                                        <h4>{{ item.name || 'Unnamed Module' }}</h4>
+                                        <span class="version-tag">v{{ item.version || '1.0.0' }}</span>
+                                    </div>
+                                </div>
+                                <div class="card-desc">
+                                    <p>{{ item.description || 'No description provided for this module.' }}</p>
+                                </div>
+                                <div class="card-action" style="display: flex; gap: 10px;">
+
+                                    <template v-if="installedItems[item.id]">
+                                        <button class="solid-install-btn uninstall"
+                                                @click="triggerUninstall(item)"
+                                                :disabled="installingItems[item.id]"
+                                                style="flex: 1; font-size: 11px;">
+                                            <icon-sync :spin="true" v-if="installingItems[item.id]"></icon-sync>
+                                            <icon-delete v-else></icon-delete>
+                                            UNINSTALL
+                                        </button>
+                                        <button class="solid-install-btn" @click="openWebApp(item)" style="flex: 1; font-size: 14px; font-weight: 900; letter-spacing: 1px; background: #39ff14; color: #000; border-color: #39ff14; box-shadow: 0 0 15px rgba(57, 255, 20, 0.4);">
+                                            RUN
+                                        </button>
+                                    </template>
+
+                                    <button v-else
+                                            class="solid-install-btn"
+                                            @click="triggerInstall(item)"
+                                            :disabled="installingItems[item.id]"
+                                            style="width: 100%;">
+                                        <icon-sync :spin="true" v-if="installingItems[item.id]"></icon-sync>
+                                        <icon-download v-else></icon-download>
+                                        {{ installingItems[item.id] ? 'INSTALLING...' : 'INSTALL' }}
+                                    </button>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </transition>
+        </main>
+    </div>
+    <script src="/store/app.js"></script>
+</body>
+</html>
